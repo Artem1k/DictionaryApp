@@ -1,5 +1,6 @@
 from collections import Counter
 import extractor
+import os
 from save import *
 
 
@@ -22,52 +23,45 @@ class DictionaryApp:
                     word_to_category[row['Word']] = category
 
         for word in self.words:
-            word_text = word[0]
-            category = word_to_category.get(word_text)
-            if category:
-                self.data[category].append(word)
-            else:
-                self.data['unknown'].append(word)
+            category = word_to_category.get(word[0])
+            self.data[category].append(word) if category else self.data['unknown'].append(word)
 
         self.words = []
 
     def show_dict(self):
         def get_valid_index(prompt):
-            try:
-                word = int(input(prompt))
-                if 1 <= word <= len(self.data['unknown']):
-                    return word - 1
-                else:
-                    print("Index out of range.")
+            while True:
+                try:
+                    word = int(input(prompt + f"(1...{(length:=len(self.data['unknownwn']))}): "))
+                    return word - 1 if 1 <= word <= length else print("Index out of range. Please enter a valid number.")
+                except ValueError:
+                    print("Invalid input. Please enter a number.")
+                except EOFError:
+                    print("Input interrupted. Exiting...")
                     return None
-            except ValueError:
-                print("Invalid input. Please enter a number.")
-                return None
             
+        def handle_word_action(prompt, action):
+            if idx := get_valid_index(prompt) is not None:
+                action(self.data['unknown'].pop(idx))
+
         while True:
             print(pd.DataFrame(self.data['unknown'], columns=['Word', 'Count']))
             choice = input("Choose an option:\n1. Mark as known\n2. Mark as ignore\n3. Delay word\n\
                         4. Save to a separate dict file\n5. Save and exit\n6. Exit\n")
             match choice:
                 case "1":
-                    idx = get_valid_index(f"Enter the word to mark as known: (1...{len(self.data['unknown'])}) ")
-                    if idx is not None:
-                        move_word_to_known(self.data['unknown'].pop(idx))
+                    handle_word_action("Enter the word to mark as known", move_word_to_known)
                 case "2":
-                    idx = get_valid_index(f"Enter the word to mark as ignore: (1...{len(self.data['unknown'])}) ")
-                    if idx is not None:
-                        to_add(self.data['unknown'].pop(idx), 'ignore')
+                    handle_word_action("Enter the word to mark as ignore", lambda w: to_add(word=w, filename='ignore'))
                 case "3":
-                    idx = get_valid_index(f"Enter the word to delay: (1...{len(self.data['unknown'])}) ")
-                    if idx is not None:
-                        print(f"Word delayed: {self.data['unknown'].pop(idx)}")
+                    handle_word_action("Enter the word to delay", lambda w: print(f"Word delayed: {w}"))
                 case "4":
-                    separate_file = input("Enter the name of the separate file: ")
-                    save_to_new_file(self.data['unknown'], separate_file)
+                    separate_file = input("Enter the name of the separate file(press 'Enter' for 'new.csv'): ") or 'new.csv'
+                    save_to_new_file(data=self.data['unknown'], filename=separate_file)
                     print(f"Dictionary saved to {separate_file} successfully!")
                     break
                 case "5":
-                    save(self.data['unknown'])
+                    save(data=self.data['unknown'])
                     print("Dictionary saved successfully!")
                     break
                 case "6":
@@ -80,7 +74,13 @@ class DictionaryApp:
 def invalid(text):
     while (choice := input(f"{text} (y/n): ").lower()) not in ('y', 'n'):
         print("Invalid input. Please enter 'y' or 'n'.")
-    return True if choice == 'y' else False
+    match choice:
+        case 'y':
+            return True
+        case 'n':
+            return False
+        case _:
+            raise ValueError("Unexpected input")
 
 def make():
     path = input("Enter the path to the Excel file(or files with space between): ")
@@ -88,10 +88,9 @@ def make():
     word_count_list = []
     for file in files:
         word_list = extractor.extract_excel_subtitles(file)
+        save_xlsx(Counter(word_list).most_common(), file) if invalid("Save dict to the original file?") else print("Dict not saved to the original file.")
         word_count_list.extend(word_list)
-    word_count = Counter(word_count_list)
-    word_common = word_count.most_common()
-    save_xlsx(word_common) if invalid("Save dict to the original file?") else print("Dict not saved to the original file.")
+    word_count = Counter(word_count_list).most_common()
     global words
-    words = DictionaryApp(word_common)
+    words = DictionaryApp(word_count)
     words.show_dict() if invalid("Show dict?") else print("Dict not shown.")
